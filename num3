@@ -1,0 +1,79 @@
+#include <P33FJ32MC204.h> 
+void Serial_Init() 
+{ 
+ TRISCbits.TRISC4 = 0; // Выход SCK (RC4) 
+ TRISBbits.TRISB5 = 0; // Выход LE (RB5) 
+ TRISCbits.TRISC5 = 0; // Выход SER (RC5) - VD 
+ TRISAbits.TRISA4 = 1; // Вход SDI (RA4) - SA 
+} 
+
+void Serial_Send(char VDs) 
+{ 
+ char c; 
+ for (c = 0; c < 8; c++) 
+ { 
+  
+ if ((VDs & (1 << (7 - c))) != 0) 
+ { 
+ LATCbits.LATC5 = 1; 
+ } 
+  else 
+ { 
+ LATCbits.LATC5 = 0; 
+ } 
+
+ LATCbits.LATC4 = 1; 
+ LATCbits.LATC4 = 0; 
+ } 
+
+ LATBbits.LATB5 = 1; 
+ LATBbits.LATB5 = 0; 
+} 
+
+ 
+
+char Serial_Read()  
+{ 
+
+ LATBbits.LATB5 = 0; 
+ LATBbits.LATB5 = 1; 
+
+ char SAs = 0x00; 
+ char c; 
+ for (c = 0; c < 8; c++) 
+ { 
+
+ SAs <<= 1; 
+ if (PORTAbits.RA4) 
+ { 
+ SAs |= 0x01; 
+ } 
+
+ LATCbits.LATC4 = 1; 
+ LATCbits.LATC4 = 0; 
+ } 
+
+ 
+
+ return SAs; 
+} 
+
+ 
+void main() 
+{ 
+ Serial_Init();
+
+
+ while (1) 
+ { 
+ char state = Serial_Read(); 
+//Serial_Send(0b00011000)
+if(state == 24){
+Serial_Send(5);
+}
+if(state == -127){
+Serial_Send(2);
+}
+
+ }
+ }
