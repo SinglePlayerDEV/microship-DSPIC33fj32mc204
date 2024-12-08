@@ -1,0 +1,29 @@
+#include <P33FJ32MC204.h> 
+
+_FOSC(OSCIOFNC_ON & POSCMD_NONE) 
+
+void main() 
+{ 
+ TRISBbits.TRISB15 = 0; // настройка порта RB15 на выход 
+ TRISBbits.TRISB13 = 0; // настройка порта RB13 на выход 
+
+ TRISAbits.TRISA2 = 1; // настройка порта RA2 на вход 
+ TRISAbits.TRISA3 = 1; // настройка порта RA3 на вход 
+
+ while (1) 
+ { 
+
+  if(PORTAbits.RA2 = 0){
+  LATBbits.LATB15 = 0;
+  LATBbits.LATB13 = 0;
+    }
+ else if(PORTAbits.RA3 = 0){ 
+ LATBbits.LATB15 = 1;
+ LATBbits.LATB13 = 0;
+}
+else {
+ LATBbits.LATB15 = 0;
+ LATBbits.LATB13 = 1;
+}
+}
+} 
