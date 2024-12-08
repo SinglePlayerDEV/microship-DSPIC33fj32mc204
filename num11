@@ -1,0 +1,576 @@
+#include <P33FJ32MC204.h> 
+#include <stdlib.h> 
+
+ 
+
+#define FOSC 7370000 
+#define FCY (FOSC / 2) 
+
+ 
+
+#define Delay_ms(d) (__delay32 (((d)) * ((FCY) / 1000uL))) 
+#define Delay_us(d) (__delay32 (((d)) * ((FCY) / 1000000uL))) 
+
+ 
+
+_FOSCSEL(FNOSC_FRC) // настройка работы микроконтроллера 
+ // от внутреннего тактового генератора 
+
+ 
+
+#define LCD_EN LATAbits.LATA10 
+#define LCD_RW LATCbits.LATC2 
+#define LCD_RS LATAbits.LATA7 
+#define LCD_DB7 LATBbits.LATB12 
+#define LCD_DB6 LATBbits.LATB14 
+#define LCD_DB5 LATBbits.LATB11 
+#define LCD_DB4 LATBbits.LATB10 
+// Подпрограмма отправки тетрады данных в драйвер ЖКИ 
+void LCD_set_half_byte(char x) 
+{ 
+ if (x & (0x01 << 3)) 
+ LCD_DB7 = 1; 
+ else 
+ LCD_DB7 = 0; 
+
+ 
+
+ if (x & (0x01 << 2)) 
+ LCD_DB6 = 1; 
+ else 
+ LCD_DB6 = 0; 
+
+ 
+
+ if (x & (0x01 << 1)) 
+ LCD_DB5 = 1; 
+ else 
+ LCD_DB5 = 0; 
+
+ 
+
+ if (x & (0x01 << 0)) 
+ LCD_DB4 = 1; 
+ else 
+ LCD_DB4 = 0; 
+
+ 
+
+ LCD_EN = 1; Delay_ms(1); 
+ LCD_EN = 0; Delay_ms(1); 
+} 
+
+ 
+
+// Инициализация используемых линий порта 
+void LCD_InitPorts() 
+{ 
+ TRISBbits.TRISB1 = 0; // Out OE (RB1) 
+ LATBbits.LATB1 = 0; // OE Lo 
+
+ 
+
+ TRISAbits.TRISA10 = 0; // Out En (RA10) 
+ TRISCbits.TRISC2 = 0; // Out R/W (RС2) 
+ TRISAbits.TRISA7 = 0; // Out RS (RA7) 
+
+ 
+
+ TRISBbits.TRISB12 = 0; // Out DB7 (RB12) 
+ TRISBbits.TRISB14 = 0; // Out DB6 (RB14) 
+ TRISBbits.TRISB11 = 0; // Out DB5 (RB11) 
+ TRISBbits.TRISB10 = 0; // Out DB4 (RB10) 
+} 
+
+ 
+
+// Инициализация контроллера ЖКИ 
+void LCD_Init() 
+{ 
+ LCD_RS = 0; 
+ LCD_RW = 0; 
+ LCD_EN = 0; 
+ Delay_ms(30); 
+
+ 
+
+ LCD_set_half_byte(0x03); 
+   Delay_ms(5); 
+ LCD_set_half_byte(0x03); 
+ Delay_ms(100); 
+ LCD_set_half_byte(0x03); 
+ LCD_set_half_byte(0x02); 
+
+ 
+
+ // 4-битный интерфейс, 2 строки, размер символа - 5х8 
+ LCD_set_half_byte(0x02); 
+ LCD_set_half_byte(0x08); 
+ Delay_ms(37); 
+
+ 
+
+ // Курсор выкл., мигание позиции выкл., индикатор вкл. 
+ LCD_set_half_byte(0x00); 
+ LCD_set_half_byte(0x0C); 
+ Delay_ms(37); 
+
+ 
+
+ // Очитска дисплея 
+ LCD_set_half_byte(0x00); 
+ LCD_set_half_byte(0x01); 
+ Delay_ms(2); 
+
+ 
+
+ // Направление перемещения курсора - вправо 
+ LCD_set_half_byte(0x00); 
+ LCD_set_half_byte(0x06); 
+} 
+
+ 
+
+// Отправление данных в DDRAM контроллера ЖКИ 
+void LCD_send_char(char c) 
+{ 
+ LCD_RS = 1; 
+ LCD_set_half_byte(c >> 4); 
+ LCD_set_half_byte(c & 0x0f); 
+ LCD_RS = 0; 
+} 
+
+ 
+
+// Вывод строки на ЖКИ 
+void LCD_WriteString(char str[]) 
+{ 
+ char i = 0; 
+ while (str[i] != 0) 
+ { 
+ LCD_send_char(str[i]); 
+ i++; 
+ } 
+} 
+
+ 
+
+// Вывод числа на ЖКИ 
+void LCD_WriteValue(unsigned int value) 
+{ 
+ char strtmp[16]; 
+ utoa(strtmp, value, 10); 
+ LCD_WriteString(strtmp); 
+} 
+// Перевод курсора ЖКИ в начальную позицию 
+void LCD_Home() 
+{ 
+ LCD_RS = 0; 
+ LCD_set_half_byte(0x02 >> 4); 
+ LCD_set_half_byte(0x02 & 0x0f); 
+} 
+
+ 
+
+// Очистка ЖКИ 
+void LCD_Clear() 
+{ 
+ LCD_RS = 0; 
+ LCD_set_half_byte(0x01 >> 4); 
+ LCD_set_half_byte(0x01 & 0x0f); 
+} 
+
+ 
+
+ 
+
+#define SDA TRISAbits.TRISA8 
+#define SCL TRISAbits.TRISA9 
+#define READ_SDA PORTAbits.RA8 
+
+ 
+
+// Инициализация портов I2C 
+void I2C_Init() 
+{ 
+ ODCAbits.ODCA8 = 1; // Открытый коллектор SDA 
+ ODCAbits.ODCA9 = 1; // Открытый коллектор SCL 
+ LATAbits.LATA8 = 0; 
+ LATAbits.LATA9 = 0; 
+
+ 
+
+ SDA = 1; 
+ SCL = 1; 
+
+ 
+
+} 
+
+ 
+
+// Формирование условия СТАРТ 
+void I2C_Start() 
+{ 
+ SDA = 0; Delay_us(25); 
+} 
+
+ 
+
+// Повторное формирование условия СТАРТ 
+void I2C_ReStart() 
+{ 
+ SCL = 0; Delay_us(25); 
+ SDA = 1; Delay_us(25); 
+ SCL = 1; Delay_us(25); 
+ SDA = 0; Delay_us(25); 
+ SCL = 0; Delay_us(25); 
+} 
+
+ 
+
+// Формирование условия СТОП 
+void I2C_Stop() 
+{ 
+ SCL = 1; Delay_us(25); 
+ SDA = 1; Delay_us(25); 
+} 
+
+ 
+
+// Передача байта по интерфейсу I2C 
+char I2C_Send(unsigned char c) 
+{ 
+ char b; 
+ for (b = 7; b >= 0; b--) 
+ { 
+ SCL = 0; Delay_us(25); 
+
+ 
+
+ if ((c & (1 << b)) != 0) 
+ { 
+ SDA = 1; 
+ } 
+ else 
+ { 
+ SDA = 0; 
+ } 
+ Delay_us(25); 
+
+ 
+
+ SCL = 1; Delay_us(50); 
+ } 
+
+ 
+
+ // ACK 
+ SCL = 0; 
+ // Отпустить линию 
+ SDA = 1; Delay_us(25); 
+ SCL = 1; Delay_us(25); 
+
+ 
+
+ char result; 
+ if (READ_SDA == 0) 
+ { 
+ result = 0; 
+ } 
+ else 
+ { 
+ result = 1; 
+ } 
+
+ 
+
+ SCL = 0; Delay_us(25); 
+ SDA = 0; Delay_us(25); 
+
+ 
+
+ return result; 
+} 
+
+ 
+
+ 
+
+// При?м байта по интерфейсу I2C 
+char I2C_Read(char ack) 
+{ 
+ SCL = 0; 
+    SDA = 1; 
+ Delay_us(50); 
+
+ 
+
+ char b, data = 0; 
+ for (b = 0; b < 8; b++) 
+ { 
+ SCL = 1; 
+ Delay_us(25); 
+ data <<= 1; 
+ if (READ_SDA != 0) 
+ { 
+ data |= 1; 
+ } 
+ Delay_us(25); 
+
+ 
+
+ SCL = 0; Delay_us(50); 
+ } 
+
+ 
+
+ SDA = 1; 
+ SCL = 1; 
+
+ 
+
+ return data; 
+} 
+
+ 
+
+// Запись байта в ПЗУ 
+void EE_WriteByte(unsigned int addr, char data) 
+{ 
+ char addrhi = (char)(addr >> 8); 
+ char addrlo = (char)(addr & 0x00FF); 
+
+ 
+
+ I2C_Start(); 
+ I2C_Send(0xA0); 
+ I2C_Send(addrhi); 
+ I2C_Send(addrlo); 
+ I2C_Send(data); 
+ I2C_Stop(); 
+
+ 
+
+ Delay_us(10); 
+} 
+
+ 
+
+// Чтение байта из ПЗУ 
+char EE_ReadByte(unsigned int addr) 
+{ 
+ char addrhi = (char)(addr >> 8); 
+ char addrlo = (char)(addr & 0x00FF); 
+
+ 
+
+ I2C_Start(); 
+ I2C_Send(0xA0); 
+ I2C_Send(addrhi); 
+ I2C_Send(addrlo); 
+
+ 
+
+ I2C_ReStart(); 
+ I2C_Send(0xA1); 
+    char data = I2C_Read(0); 
+ I2C_Stop(); 
+
+ 
+
+ return data; 
+} 
+
+ 
+
+char _i = 0; // номер активного вывода дешифратора 
+char _keys[4][3] = {{9, 8, 7}, // массив кнопок клавиатуры 
+ {6, 5, 4}, 
+ {3, 2, 1}, 
+ {'#', 0, '*'}}; 
+char _key = 0; // текущая нажатая кнопка 
+char _keyPressed = 0; // флаг нажатия кнопки 
+
+ 
+
+ 
+
+// Инициализация таймера T1 
+void Init_Timer1() 
+{ 
+ T1CON = 0; // сброс таймера 
+ IFS0bits.T1IF = 0; // сброс флага прерывания таймера 
+ IEC0bits.T1IE = 1; // разрешение прерывания от таймера 
+ TMR1 = 0x0000; // обнуление текущего значения таймера 
+ PR1 = 0x0E65; // задание периода таймера 
+ T1CONbits.TON = 1; // разрешение работы таймера и его запуск 
+} 
+
+ 
+
+// Инициализация линий портов клавиатуры 
+void Kbd_Init() 
+{ 
+ TRISBbits.TRISB6 = 0; // Выход A (RB6) 
+ TRISBbits.TRISB7 = 0; // Выход B (RB7) 
+ TRISBbits.TRISB8 = 0; // Выход C (RB8) 
+ TRISBbits.TRISB9 = 0; // Выход D (RB9) 
+
+ 
+
+ 
+
+ TRISCbits.TRISC6 = 0; // Out INA (RC6) 
+ TRISCbits.TRISC7 = 0; // Out INB (RC7) 
+ TRISCbits.TRISC8 = 0; // Out INC (RC8) 
+
+ 
+
+ TRISCbits.TRISC9 = 1; // In D (RC9) 
+} 
+
+ 
+
+void Kbd_ReadCol(char row) 
+{ 
+ char column; 
+ for (column = 0; column < 3; column++) 
+ { 
+ LATC &= ~(0x07 << 6); // Выбор входа 
+ LATC |= (column << 6); 
+ __delay32(10L); // Пауза для установки сигнала 
+
+ 
+
+ // чтение столбца 
+ if (!PORTCbits.RC9) 
+     { 
+ _key = _keys[row][column]; // Сохранение нажатой кнопки 
+ _keyPressed = 1; // Установка флага нажатия кнопки 
+ } 
+ } 
+} 
+
+ 
+
+// Прерывание таймера T1 по совпадению 
+void __attribute__((interrupt,no_auto_psv)) _T1Interrupt() 
+{ 
+
+ 
+
+ LATB &= ~(0x0F << 6); // Переключение на следующий 
+ LATB |= (_i + 8) << 6; // выход дешифратора 
+
+ 
+
+ Kbd_ReadCol(_i); // Сканирование столбца 
+
+ 
+
+ _i++; 
+ if (_i == 4) 
+ { 
+ _i = 0; 
+ if (!_keyPressed) 
+ { 
+ _key = -1; 
+ } 
+ _keyPressed = 0; // Сброс флага нажатия кнопки 
+ } 
+
+ 
+
+ IFS0bits.T1IF = 0; // Сброс флага прерывания таймера 
+ TMR1 = 0; // Перезапуск таймера 
+} 
+
+ 
+
+// Ввод данных с клавиатуры с отображением на ЖКИ 
+unsigned int InputValue(char *str) 
+{ 
+ static char prevKey = 0; 
+ unsigned int value = 0; 
+
+ 
+
+ LCD_Clear(); 
+ LCD_WriteString(str); 
+ LCD_WriteValue(value); 
+
+ 
+
+ while (1) 
+ { 
+ if (prevKey != _key) 
+ { 
+ prevKey = _key; 
+ if (_key == '*') 
+ { 
+ value = value / 10; 
+ } 
+ else if (_key == '#') 
+ { 
+ return value; 
+     } 
+ else if (_key != -1) 
+ { 
+ value = value * 10 + _key; 
+ } 
+
+ 
+
+ LCD_Clear(); 
+ LCD_WriteString(str); 
+ LCD_WriteValue(value); 
+ } 
+ } 
+}  
+
+ 
+
+ 
+
+void main() 
+{ 
+ AD1PCFGL = 0xFFFF; // Отключение входов АЦП 
+ Kbd_Init(); // Инициализация портов клавиатуры 
+ Init_Timer1(); // Инициализация таймера 
+ I2C_Init(); // Инициализация портов I2C 
+ LCD_InitPorts(); // Инициализация портов для управления ЖКИ 
+ LCD_Init(); // Инициализация ЖКИ 
+
+ 
+
+ while (1) 
+ { 
+ // Ввод адреса и данных 
+ unsigned char data1 = (unsigned char)InputValue("Write data:\0"); 
+ unsigned char data = (unsigned char)InputValue("Write data:\0"); 
+
+ 
+
+ // Сохранение данные в ПЗУ 
+ EE_WriteByte(data1, data); 
+ LCD_Clear(); 
+ LCD_WriteString("Ok"); 
+ __delay32(FCY); 
+
+ 
+
+ // Ввод адреса чтения 
+
+
+ 
+
+ // Чтение данных из ПЗУ 
+ 
+ LCD_Clear(); 
+ LCD_WriteString("Read data:\0"); 
+
+ LCD_WriteValue(data1+data); 
+ __delay32(2 * FCY); 
+ } 
+} 
