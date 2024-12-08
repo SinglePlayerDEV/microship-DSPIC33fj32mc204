@@ -1,0 +1,221 @@
+#include <P33FJ32MC204.h> 
+
+#define FOSC 7370000 
+#define FCY (FOSC / 2) 
+
+ 
+// объявление кодов сегментов 
+#define SEG_A 0x08 // --- SEG_A --- 
+#define SEG_B 0x01 // | | 
+#define SEG_C 0x20 // SEG_F SEG_B 
+#define SEG_D 0x04 // | | 
+#define SEG_E 0x80 // --- SEG_G --- 
+#define SEG_F 0x10 // | | 
+#define SEG_G 0x40 // SEG_E SEG_C 
+#define SEG_DP 0x02 // | | 
+ // --- SEG_D --- SEG_DP 
+
+ 
+// объявление кодов цифр 
+#define N0 SEG_A + SEG_B + SEG_C + SEG_D + SEG_E + SEG_F 
+#define N1 SEG_B + SEG_C 
+#define N2 SEG_A + SEG_B + SEG_G + SEG_E + SEG_D 
+#define N3 SEG_A + SEG_B + SEG_G + SEG_C + SEG_D 
+#define N4 SEG_F + SEG_G + SEG_B + SEG_C 
+#define N5 SEG_A + SEG_F + SEG_G + SEG_C + SEG_D 
+#define N6 SEG_A + SEG_F + SEG_G + SEG_C + SEG_D + SEG_E 
+#define N7 SEG_A + SEG_B + SEG_C 
+#define N8 SEG_A + SEG_B + SEG_C + SEG_D + SEG_E + SEG_F + SEG_G 
+#define N9 SEG_A + SEG_B + SEG_C + SEG_D + SEG_F + SEG_G 
+
+ 
+#define DIP SEG_DP 
+#define MINUS SEG_G 
+#define OFF 0x00 
+
+// массив кодов цифр 
+char DIGITS[] = {N0, N1, N2, N3, N4, N5, N6, N7, N8, N9}; 
+_FOSCSEL(FNOSC_FRC) // настройка работы микроконтроллера 
+ // от внутреннего тактового генератора 
+
+// Инициализация таймера T1 
+void Init_Timer1() 
+{ 
+T1CON = 0; // сброс таймера 
+ IFS0bits.T1IF = 0; // сброс флага прерывания таймера 
+ IEC0bits.T1IE = 1; // разрешение прерывания от таймера 
+ TMR1 = 0x0000; // обнуление текущего значения таймера 
+ PR1 = 0x0E65; // задание периода таймера 
+ T1CONbits.TON = 1; // разрешение работы таймера и его запуск 
+} 
+
+char _ind = 0; // номер активного индикатора 
+char _data[8]; // буфер индикации - массив кодов символов 
+
+// Отправление данных в регистр MBI5168 
+void Ind_Send(char digit) 
+{ 
+ char c; 
+ for (c = 0; c < 8; c++) 
+ { 
+ // установка требуемого логического уровня 
+ // на последовательном входе SDI драйвера MBI5168 
+ if ((digit & (1 << c)) != 0) 
+ { 
+ LATCbits.LATC3 = 1; 
+ } 
+ else 
+ { 
+ LATCbits.LATC3 = 0; 
+ } 
+
+ // формирование синхроимпульса на входе SCK 
+ LATCbits.LATC4 = 1; 
+ LATCbits.LATC4 = 0; 
+ } 
+
+ // формирование синхроимпульса на входе LE 
+ LATBbits.LATB5 = 1; 
+ LATBbits.LATB5 = 0; 
+} 
+
+// Инициализация линий портов 
+void Ind_Init() 
+{ 
+ TRISBbits.TRISB6 = 0; // Выход A (RB6) 
+ TRISBbits.TRISB7 = 0; // Выход B (RB7) 
+ TRISBbits.TRISB8 = 0; // Выход C (RB8) 
+ TRISBbits.TRISB9 = 0; // Выход D (RB9) 
+
+ TRISCbits.TRISC3 = 0; // Выход SDI (RC3) 
+ TRISCbits.TRISC4 = 0; // Выход SCK (RC4) 
+ TRISBbits.TRISB5 = 0; // Выход LE (RB5) 
+} 
+
+// Разбитие числа на цифры 
+void Ind_Show(unsigned int a, unsigned int b) 
+{ 
+ _data[3] = DIGITS[a % 10]; a /= 10; 
+ _data[2] = DIGITS[a % 10]; a /= 10; 
+ _data[1] = DIGITS[a % 10]; a /= 10; 
+ _data[0] = DIGITS[a % 10]; 
+
+ _data[7] = DIGITS[b % 10]; b /= 10; 
+ _data[6] = DIGITS[b % 10]; b /= 10; 
+ _data[5] = DIGITS[b % 10]; b /= 10; 
+ _data[4] = DIGITS[b % 10]; 
+} 
+
+// Прерывание таймера T1 по совпадению 
+void __attribute__((interrupt,no_auto_psv)) _T1Interrupt() 
+{ 
+ Ind_Send(OFF); // Отключение индикатора 
+
+ LATB &= ~(0x07 << 6); // Переключение на следующий 
+ LATB |= (_ind << 6); // индикатор 
+ 
+ Ind_Send(_data[_ind]); // Отправка кода цифры 
+
+ _ind++; // переход к след. индикатору 
+ if (_ind == 8) 
+ { 
+ _ind = 0; 
+ } 
+IFS0bits.T1IF = 0; // Сброс флага прерывания таймера 
+ TMR1 = 0; // Перезапуск таймера 
+} 
+void Serial_Init() // настройка линий порта 
+{ 
+ TRISBbits.TRISB5 = 0; // Выход LE (RB5) 
+ TRISBbits.TRISB13 = 0;
+ TRISBbits.TRISB15 = 0;
+ TRISCbits.TRISC5 = 0; // Выход SER (RC5) - VD 
+ TRISAbits.TRISA4 = 1; // Вход SDI (RA4) - SA 
+ TRISAbits.TRISA2 = 1; // настройка порта RA2 на вход 
+ TRISAbits.TRISA3 = 1; 
+} 
+int Serial_Read() // Чтение данных из регистра HC165 
+{ 
+ // формирование синхроимпульса на LE 
+ LATBbits.LATB5 = 0; 
+ LATBbits.LATB5 = 1;  
+ // чтение логического уровня 
+ // на последовательном выходе Qh регистра HC165 
+ char SAs = 0x00; 
+ char c;  
+ int value;
+   
+   for (c = 0; c < 1; c++) {
+      if (PORTAbits.RA3) 
+ { 
+ value++;
+ SAs |= 0x01; 
+ } 
+ if(PORTAbits.RA2){
+    value++;
+ SAs |= 0x01; 
+    }
+
+      }
+ for (c = 0; c < 8; c++) 
+ { 
+ // чтение логического уровня 
+ // на последовательном выходе Qh регистра HC165 
+ // сдвигая предыдущие данные влево 
+ //SAs <<= 1; 
+ if (PORTAbits.RA4) 
+ { 
+ value++;
+ SAs |= 0x01; 
+ } 
+ 
+ // формирование синхроимпульса на входе SCK 
+ LATCbits.LATC4 = 1; 
+ LATCbits.LATC4 = 0; 
+ } 
+ return value; 
+} 
+void Serial_Send(char VDs) // Отправление данных в регистр HC595 
+{ 
+ char c; 
+ for (c = 0; c < 8; c++) 
+ { 
+ // установка требуемого логического уровня 
+ // на последовательном входе SER регистра HC595 
+ // начиная с последнего бита 
+ if ((VDs & (1 << (7 - c))) != 0) 
+ { 
+ LATCbits.LATC5 = 1; 
+ } 
+ else 
+ { 
+ LATCbits.LATC5 = 0; 
+ } 
+
+ // формирование синхроимпульса на входе SCK 
+ LATCbits.LATC4 = 1; 
+ LATCbits.LATC4 = 0; 
+ } 
+ // формирование синхроимпульса на входе LE 
+ LATBbits.LATB5 = 1; 
+ LATBbits.LATB5 = 0; 
+} 
+int main() 
+{ 
+ 
+ Init_Timer1(); // Инициализация таймера 
+
+ Ind_Init(); // Инициализация индикации 
+ Ind_Show(0, 0); // Обнуление индикации 
+
+ unsigned int seconds = 0; 
+ while (1) 
+ { 
+   
+  char state = Serial_Read(); 
+ Serial_Send(state); 
+ Ind_Show(0, state); 
+ __delay32(FCY/4); // пауза 1 сек 
+ state++; 
+ } 
+} 
