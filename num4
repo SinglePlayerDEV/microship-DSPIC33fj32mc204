@@ -1,0 +1,44 @@
+#include <P33FJ32MC204.h> 
+
+_FOSCSEL(FNOSC_FRC) 
+
+void Init_Timer1() 
+{ 
+ T1CON = 0; 
+ IFS0bits.T1IF = 0; 
+ IEC0bits.T1IE = 1;  
+ TMR1 = 0x0000;  
+ PR1 = 0x0E65; 
+ T1CONbits.TON = 1; 
+}
+int _ms = 0; 
+
+void __attribute__((interrupt)) _T1Interrupt() 
+{ 
+ _ms++; 
+ IFS0bits.T1IF = 0; 
+ TMR1 = 0; 
+} 
+
+int main() 
+{ 
+ Init_Timer1(); 
+ TRISBbits.TRISB15 = 0; 
+ TRISAbits.TRISA2 = 1;
+ while (PORTAbits.RA2) 
+ { 
+ if (_ms < 1000) 
+ { 
+ LATBbits.LATB15 = 0; 
+ } 
+ else if (_ms < 2000) 
+ { 
+ LATBbits.LATB15 = 1; 
+ } 
+ else 
+ { 
+ _ms = 0; 
+ } 
+ } 
+return 0;
+} 
